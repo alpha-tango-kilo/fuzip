@@ -1,8 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
-    fs, io,
-    io::Write,
-    mem,
+    fs, io, mem,
     os::windows::fs::FileTypeExt,
     path::PathBuf,
 };
@@ -21,10 +19,31 @@ fn main() -> anyhow::Result<()> {
     let [lefts, rights] = inputs.as_slice() else {
         bail!("currently only 2 inputs are supported");
     };
-    let mut stdout = io::stdout();
-    fuzzy_zip_two(lefts, rights).for_each(|(left, right)| {
-        let _ = writeln!(stdout, "{} {}", left.display(), right.display());
-    });
+
+    let exec = args.exec();
+    fuzzy_zip_two(lefts, rights).try_for_each(
+        |(left, right)| -> anyhow::Result<()> {
+            match &exec {
+                Some(exec) => {
+                    let mut command =
+                        exec.to_command(&[left.display(), right.display()]);
+                    if args.verbose || args.dry_run {
+                        println!("{command:?}");
+                    }
+                    if !args.dry_run {
+                        let status = command.status()?;
+                        if !status.success() {
+                            eprintln!("exited with code {status}: {command:?}");
+                        }
+                    }
+                },
+                None => {
+                    println!("{} {}", left.display(), right.display());
+                },
+            }
+            Ok(())
+        },
+    )?;
     Ok(())
 }
 

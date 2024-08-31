@@ -12,6 +12,8 @@ repository = "https://codeberg.org/alpha-tango-kilo/fuzip"
 [dependencies]
 anyhow = "1"
 pathfinding = "4.11"
+regex-lite = "0.1.6"
+shlex = "1.3"
 strsim = "0.11"
 
 [dependencies.clap]

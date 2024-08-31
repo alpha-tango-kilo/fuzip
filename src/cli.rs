@@ -37,8 +37,11 @@ impl ExecBlueprint {
     // TODO: newtype that doesn't allow modification, only execution. Maybe
     //       better debug repr
     pub fn to_command(&self, args: &[impl ToString]) -> Command {
-        static PLACEHOLDER_REGEX: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(r"^\{(?P<index>\d+)\}").unwrap());
+        static PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+            // Captures the number within a {1} placeholder. Requires
+            // full-string match
+            Regex::new(r"^\{(?P<index>\d+)\}$").unwrap()
+        });
         let swap_placeholder = |part: &str| -> String {
             match PLACEHOLDER_REGEX.captures(part) {
                 Some(captures) => {

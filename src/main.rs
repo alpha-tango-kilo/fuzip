@@ -2,6 +2,7 @@ use std::{
     ffi::{OsStr, OsString},
     fs, io,
     io::Write,
+    mem,
     os::windows::fs::FileTypeExt,
     path::PathBuf,
 };
@@ -47,16 +48,26 @@ fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<PathBuf>>> {
         .collect()
 }
 
-fn fuzzy_zip_two<'a, L, R>(
-    lefts: &'a [L],
-    rights: &'a [R],
-) -> impl Iterator<Item = (&'a L, &'a R)>
+fn fuzzy_zip_two<'a, T>(
+    lefts: &'a [T],
+    rights: &'a [T],
+) -> impl Iterator<Item = (&'a T, &'a T)>
 where
-    L: AsRef<OsStr>,
-    R: AsRef<OsStr>,
+    T: AsRef<OsStr>,
 {
     debug_assert!(!lefts.is_empty(), "lefts empty");
     debug_assert!(!rights.is_empty(), "rights empty");
+
+    // Re-assign these so they can be swapped if needed, Matrix needs rows >=
+    // columns
+    let mut lefts = lefts;
+    let mut rights = rights;
+    let swapped = if lefts.len() <= rights.len() {
+        false
+    } else {
+        mem::swap(&mut lefts, &mut rights);
+        true
+    };
 
     let matrix = Matrix::from_fn(
         lefts.len(),
@@ -70,11 +81,19 @@ where
         },
     );
 
+    // TODO: return Nones for things that couldn't be matched to, abstraction
+    //       type?
     let (_, assignments) = kuhn_munkres_min(&matrix);
     assignments
         .into_iter()
         .enumerate()
-        .map(|(row, column)| (&lefts[row], &rights[column]))
+        .map(move |(row, column)| {
+            if !swapped {
+                (&lefts[row], &rights[column])
+            } else {
+                (&rights[column], &lefts[row])
+            }
+        })
 }
 
 #[cfg(test)]
@@ -83,8 +102,8 @@ mod tests {
 
     #[test]
     fn test_zip_two() {
-        let answer =
-            fuzzy_zip_two(&["aa", "bb"], &["ab", "bb"]).collect::<Vec<_>>();
+        let answer = fuzzy_zip_two(&["aa", "bb", "cc"], &["ab", "bb"])
+            .collect::<Vec<_>>();
         dbg!(answer);
     }
 }

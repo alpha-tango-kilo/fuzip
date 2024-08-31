@@ -6,7 +6,7 @@ use std::{
     sync::LazyLock,
 };
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use clap::{builder::NonEmptyStringValueParser, Parser};
 use log::debug;
 use regex_lite::Regex;
@@ -21,7 +21,10 @@ pub struct FuzipArgs {
     /// Print commands before executing them
     #[arg(short = 'v', long = "verbose")]
     pub verbose: bool,
-    /// The command to execute on pairs
+    /// The command template to execute
+    ///
+    /// Use 1-based indices surrounded by curly brackets to substite, e.g.
+    /// "echo {1} {2}"
     #[arg(short = 'x', long = "exec", value_parser = NonEmptyStringValueParser::new())]
     exec: Option<String>,
     /// Don't run command, just show what would be run
@@ -59,7 +62,12 @@ impl ExecBlueprint {
                         .unwrap()
                         .as_str()
                         .parse::<usize>()
-                        .expect("placeholder exceeded usize::MAX");
+                        .expect("placeholder index exceeded usize::MAX")
+                        .checked_add(1)
+                        .expect("placeholder index exceeded usize::MAX");
+                    if index == 0 {
+                        bail!("placeholder indices are 1-based, not 0-based");
+                    }
                     let replacement =
                         replacements.get(index).ok_or_else(|| {
                             anyhow!(

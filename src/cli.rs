@@ -1,10 +1,12 @@
 use std::{
     ffi::OsString,
+    fmt::Display,
     process::{Command, Stdio},
     sync::LazyLock,
 };
 
 use clap::Parser;
+use log::debug;
 use regex_lite::Regex;
 
 #[derive(Debug, Parser)]
@@ -36,7 +38,7 @@ pub struct ExecBlueprint(Vec<String>);
 impl ExecBlueprint {
     // TODO: newtype that doesn't allow modification, only execution. Maybe
     //       better debug repr
-    pub fn to_command(&self, args: &[impl ToString]) -> Command {
+    pub fn to_command(&self, args: &[impl Display]) -> Command {
         static PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
             // Captures the number within a {1} placeholder. Requires
             // full-string match
@@ -52,6 +54,7 @@ impl ExecBlueprint {
                         .parse::<usize>()
                         .expect("placeholder exceeded usize::MAX");
                     // TODO: error handling here
+                    debug!("placeholder {part} => {}", &args[index]);
                     args[index].to_string()
                 },
                 None => part.to_string(),

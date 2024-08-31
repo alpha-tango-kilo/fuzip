@@ -7,15 +7,33 @@ use std::{
 
 use anyhow::bail;
 use clap::Parser;
+use env_logger::Env;
+use log::{debug, error, info, LevelFilter};
 use pathfinding::{kuhn_munkres::kuhn_munkres_min, matrix::Matrix};
 
 use crate::cli::FuzipArgs;
 
 mod cli;
 
+macro_rules! time {
+    ($task:literal, $e:expr) => {{
+        let now = std::time::Instant::now();
+        let expr = $e;
+        log::trace!("{} took {:?}", $task, now.elapsed());
+        expr
+    }};
+}
+
 fn main() -> anyhow::Result<()> {
+    env_logger::builder()
+        .filter_level(LevelFilter::Info)
+        .parse_env(Env::new().filter("FUZIP_LOG"))
+        .format_timestamp(None)
+        .format_module_path(cfg!(debug_assertions))
+        .init();
+
     let args = FuzipArgs::parse();
-    let inputs = prep_paths(&args.inputs)?;
+    let inputs = time!("prep_paths", prep_paths(&args.inputs))?;
     let [lefts, rights] = inputs.as_slice() else {
         bail!("currently only 2 inputs are supported");
     };
@@ -28,12 +46,12 @@ fn main() -> anyhow::Result<()> {
                     let mut command =
                         exec.to_command(&[left.display(), right.display()]);
                     if args.verbose || args.dry_run {
-                        println!("{command:?}");
+                        info!("Running {command:?}");
                     }
                     if !args.dry_run {
                         let status = command.status()?;
                         if !status.success() {
-                            eprintln!("exited with code {status}: {command:?}");
+                            error!("exited with code {status}: {command:?}");
                         }
                     }
                 },
@@ -84,25 +102,30 @@ where
     let swapped = if lefts.len() <= rights.len() {
         false
     } else {
+        debug!("swapping lefts & rights");
         mem::swap(&mut lefts, &mut rights);
         true
     };
 
-    let matrix = Matrix::from_fn(
-        lefts.len(),
-        rights.len(),
-        |(left_index, right_index)| {
-            let weight = strsim::generic_damerau_levenshtein(
-                lefts[left_index].as_ref().as_encoded_bytes(),
-                rights[right_index].as_ref().as_encoded_bytes(),
-            );
-            i64::try_from(weight).expect("weight unable to fit in i64")
-        },
+    let matrix = time!(
+        "build matrix",
+        Matrix::from_fn(
+            lefts.len(),
+            rights.len(),
+            |(left_index, right_index)| {
+                let weight = strsim::generic_damerau_levenshtein(
+                    lefts[left_index].as_ref().as_encoded_bytes(),
+                    rights[right_index].as_ref().as_encoded_bytes(),
+                );
+                i64::try_from(weight).expect("weight unable to fit in i64")
+            },
+        )
     );
 
     // TODO: return Nones for things that couldn't be matched to, abstraction
     //       type?
-    let (_, assignments) = kuhn_munkres_min(&matrix);
+    let (_, assignments) =
+        time!("solve with Kuhn-Munkres", kuhn_munkres_min(&matrix));
     assignments
         .into_iter()
         .enumerate()

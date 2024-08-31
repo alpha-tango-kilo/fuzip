@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
             match &exec {
                 Some(exec) => {
                     let mut command =
-                        exec.to_command(&[left.display(), right.display()]);
+                        exec.to_command(&[left.display(), right.display()])?;
                     if args.verbose || args.dry_run {
                         info!("Running {command:?}");
                     }

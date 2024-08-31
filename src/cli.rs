@@ -6,6 +6,7 @@ use std::{
     sync::LazyLock,
 };
 
+use anyhow::anyhow;
 use clap::{builder::NonEmptyStringValueParser, Parser};
 use log::debug;
 use regex_lite::Regex;
@@ -41,13 +42,16 @@ pub struct ExecBlueprint {
 }
 
 impl ExecBlueprint {
-    pub fn to_command(&self, args: &[impl fmt::Display]) -> PreparedCommand {
+    pub fn to_command(
+        &self,
+        replacements: &[impl fmt::Display],
+    ) -> anyhow::Result<PreparedCommand> {
         static PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
             // Captures the number within a {1} placeholder. Requires
             // full-string match
             Regex::new(r"^\{(?P<index>\d+)\}$").unwrap()
         });
-        let swap_placeholder = |part: &str| -> String {
+        let swap_placeholder = |part: &str| -> anyhow::Result<String> {
             match PLACEHOLDER_REGEX.captures(part) {
                 Some(captures) => {
                     let index = captures
@@ -56,20 +60,30 @@ impl ExecBlueprint {
                         .as_str()
                         .parse::<usize>()
                         .expect("placeholder exceeded usize::MAX");
-                    // TODO: error handling here
-                    debug!("placeholder {part} => {}", &args[index]);
-                    args[index].to_string()
+                    let replacement =
+                        replacements.get(index).ok_or_else(|| {
+                            anyhow!(
+                                "invalid placeholder index: gave {index} when \
+                                 only {} placeholders are available",
+                                replacements.len(),
+                            )
+                        })?;
+                    debug!("placeholder {part} => {replacement}");
+                    Ok(replacement.to_string())
                 },
-                None => part.to_string(),
+                None => Ok(part.to_string()),
             }
         };
 
-        let mut cmd = Command::new(swap_placeholder(&self.program));
-        cmd.args(self.args.iter().map(|part| swap_placeholder(part)));
+        let mut cmd = Command::new(swap_placeholder(&self.program)?);
+        self.args.iter().try_for_each(|arg| -> anyhow::Result<()> {
+            cmd.arg(swap_placeholder(arg)?);
+            Ok(())
+        })?;
         cmd.stdout(Stdio::inherit());
         cmd.stderr(Stdio::inherit());
         cmd.stdin(Stdio::null());
-        cmd.into()
+        Ok(cmd.into())
     }
 }
 

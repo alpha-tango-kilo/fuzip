@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::bail;
 use clap::Parser;
+use pathfinding::{kuhn_munkres::kuhn_munkres_min, matrix::Matrix};
 
 use crate::cli::FuzipArgs;
 
@@ -19,9 +20,8 @@ fn main() -> anyhow::Result<()> {
     let [lefts, rights] = inputs.as_slice() else {
         bail!("currently only 2 inputs are supported");
     };
-    let matched = fuzzy_zip_two(lefts, rights);
     let mut stdout = io::stdout();
-    matched.into_iter().for_each(|(left, right)| {
+    fuzzy_zip_two(lefts, rights).for_each(|(left, right)| {
         let _ = writeln!(stdout, "{} {}", left.display(), right.display());
     });
     Ok(())
@@ -47,10 +47,44 @@ fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<PathBuf>>> {
         .collect()
 }
 
-fn fuzzy_zip_two<T, U>(_lefts: &[T], _rights: &[U]) -> Vec<(T, U)>
+fn fuzzy_zip_two<'a, L, R>(
+    lefts: &'a [L],
+    rights: &'a [R],
+) -> impl Iterator<Item = (&'a L, &'a R)>
 where
-    T: AsRef<OsStr>,
-    U: AsRef<OsStr>,
+    L: AsRef<OsStr>,
+    R: AsRef<OsStr>,
 {
-    todo!()
+    debug_assert!(!lefts.is_empty(), "lefts empty");
+    debug_assert!(!rights.is_empty(), "rights empty");
+
+    let matrix = Matrix::from_fn(
+        lefts.len(),
+        rights.len(),
+        |(left_index, right_index)| {
+            let weight = strsim::generic_damerau_levenshtein(
+                lefts[left_index].as_ref().as_encoded_bytes(),
+                rights[right_index].as_ref().as_encoded_bytes(),
+            );
+            i64::try_from(weight).expect("weight unable to fit in i64")
+        },
+    );
+
+    let (_, assignments) = kuhn_munkres_min(&matrix);
+    assignments
+        .into_iter()
+        .enumerate()
+        .map(|(row, column)| (&lefts[row], &rights[column]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_zip_two() {
+        let answer =
+            fuzzy_zip_two(&["aa", "bb"], &["ab", "bb"]).collect::<Vec<_>>();
+        dbg!(answer);
+    }
 }

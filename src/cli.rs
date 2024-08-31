@@ -16,6 +16,7 @@ pub struct FuzipArgs {
     /// Print commands before executing them
     #[arg(short = 'v', long = "verbose")]
     pub verbose: bool,
+    // TODO: can clap validate this to be non-empty?
     /// The command to execute on pairs
     #[arg(short = 'x', long = "exec")]
     exec: Option<String>,
@@ -33,6 +34,8 @@ impl FuzipArgs {
 pub struct ExecBlueprint(Vec<String>);
 
 impl ExecBlueprint {
+    // TODO: newtype that doesn't allow modification, only execution. Maybe
+    //       better debug repr
     pub fn to_command(&self, args: &[impl ToString]) -> Command {
         static PLACEHOLDER_REGEX: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"^\{(?P<index>\d+)\}").unwrap());
@@ -45,12 +48,14 @@ impl ExecBlueprint {
                         .as_str()
                         .parse::<usize>()
                         .expect("placeholder exceeded usize::MAX");
+                    // TODO: error handling here
                     args[index].to_string()
                 },
                 None => part.to_string(),
             }
         };
 
+        // TODO: this should be type-encoded within ExecBlueprint
         let Some((first, rest)) = self.0.split_first() else {
             panic!("empty ExecBlueprint");
         };
@@ -63,6 +68,8 @@ impl ExecBlueprint {
     }
 }
 
+// TODO: maybe use TryFrom here so we can surface the shlex error and any empty
+//       string errors
 impl<S: AsRef<str>> From<S> for ExecBlueprint {
     fn from(value: S) -> Self {
         ExecBlueprint(shlex::split(value.as_ref()).expect("shlex failed"))

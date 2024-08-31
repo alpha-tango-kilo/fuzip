@@ -6,9 +6,10 @@ use std::{
     sync::LazyLock,
 };
 
-use clap::Parser;
+use clap::{builder::NonEmptyStringValueParser, Parser};
 use log::debug;
 use regex_lite::Regex;
+use shlex::Shlex;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -19,9 +20,8 @@ pub struct FuzipArgs {
     /// Print commands before executing them
     #[arg(short = 'v', long = "verbose")]
     pub verbose: bool,
-    // TODO: can clap validate this to be non-empty?
     /// The command to execute on pairs
-    #[arg(short = 'x', long = "exec")]
+    #[arg(short = 'x', long = "exec", value_parser = NonEmptyStringValueParser::new())]
     exec: Option<String>,
     /// Don't run command, just show what would be run
     #[arg(short = 'n', long = "dry-run", requires = "exec")]
@@ -34,7 +34,11 @@ impl FuzipArgs {
     }
 }
 
-pub struct ExecBlueprint(Vec<String>);
+#[derive(Debug)]
+pub struct ExecBlueprint {
+    program: String,
+    args: Vec<String>,
+}
 
 impl ExecBlueprint {
     pub fn to_command(&self, args: &[impl fmt::Display]) -> PreparedCommand {
@@ -60,12 +64,8 @@ impl ExecBlueprint {
             }
         };
 
-        // TODO: this should be type-encoded within ExecBlueprint
-        let Some((first, rest)) = self.0.split_first() else {
-            panic!("empty ExecBlueprint");
-        };
-        let mut cmd = Command::new(swap_placeholder(first));
-        cmd.args(rest.iter().map(|part| swap_placeholder(part)));
+        let mut cmd = Command::new(swap_placeholder(&self.program));
+        cmd.args(self.args.iter().map(|part| swap_placeholder(part)));
         cmd.stdout(Stdio::inherit());
         cmd.stderr(Stdio::inherit());
         cmd.stdin(Stdio::null());
@@ -73,11 +73,18 @@ impl ExecBlueprint {
     }
 }
 
-// TODO: maybe use TryFrom here so we can surface the shlex error and any empty
-//       string errors
-impl<S: AsRef<str>> From<S> for ExecBlueprint {
-    fn from(value: S) -> Self {
-        ExecBlueprint(shlex::split(value.as_ref()).expect("shlex failed"))
+impl<S> From<S> for ExecBlueprint
+where
+    S: AsRef<str>,
+{
+    fn from(invocation: S) -> Self {
+        let invocation = invocation.as_ref();
+        let mut shell_word_iter = Shlex::new(invocation);
+        let program = shell_word_iter
+            .next()
+            .expect("clap was meant to verify the command wasn't empty");
+        let args = shell_word_iter.collect();
+        ExecBlueprint { program, args }
     }
 }
 

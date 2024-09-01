@@ -7,11 +7,39 @@ If there are 50 files in each and you want to combine the corresponding pairs wi
 That's where `fuzip` wants to come in - you'd point it at both the two folders and it'd output the most likely pairs of of files.
 I'd also plan on having some kind of command execution support with templating, similar to `xargs` and `find`.
 
-## Proof of concept
+## Usage
 
-Bipartite maximal matching - let's not try and zip N collections as apparently that's hell
+```
+Usage: fuzip [OPTIONS] [DIR] [DIR]...
 
-Command execution with templating
+Arguments:
+  [DIR] [DIR]...
+          Directories to match files from
+
+Options:
+  -v, --verbose
+          Print commands before executing them
+
+  -x, --exec <EXEC>
+          The command template to execute
+
+          Use 1-based indices surrounded by curly brackets to substite, e.g. "echo {1} {2}"
+
+  -n, --dry-run
+          Don't run command, just show what would be run
+
+      --full-only
+          Only show complete zips, no partial ones
+
+      --filter <REGEX>
+          Ignore any values (from any input) that don't match this regular expression
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+```
 
 ## Beyond proof of concept
 

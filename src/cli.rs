@@ -18,7 +18,7 @@ use crate::{Fuzip, FuzipMissing, Fuzippable};
 #[command(version, about)]
 pub struct FuzipArgs {
     /// Directories to match files from
-    #[arg(value_name = "input", num_args = 2..)]
+    #[arg(value_name = "DIR", num_args = 2..)]
     pub inputs: Vec<OsString>,
     /// Print commands before executing them
     #[arg(short, long)]
@@ -37,7 +37,7 @@ pub struct FuzipArgs {
     pub full_only: bool,
     /// Ignore any values (from any input) that don't match this regular
     /// expression
-    #[arg(long)]
+    #[arg(long, value_name = "REGEX")]
     pub filter: Option<Regex>,
 }
 

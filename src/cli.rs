@@ -6,11 +6,13 @@ use std::{
     sync::LazyLock,
 };
 
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use clap::{builder::NonEmptyStringValueParser, Parser};
 use log::debug;
 use regex_lite::Regex;
 use shlex::Shlex;
+
+use crate::{Fuzip, FuzipMissing, Fuzippable};
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -45,9 +47,9 @@ pub struct ExecBlueprint {
 }
 
 impl ExecBlueprint {
-    pub fn to_command(
+    pub fn to_command<T: Fuzippable>(
         &self,
-        replacements: &[impl fmt::Display],
+        replacements: &Fuzip<T>,
     ) -> anyhow::Result<PreparedCommand> {
         static PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
             // Captures the number within a {1} placeholder. Requires
@@ -68,16 +70,19 @@ impl ExecBlueprint {
                     if index == 0 {
                         bail!("placeholder indices are 1-based, not 0-based");
                     }
-                    let replacement =
-                        replacements.get(index).ok_or_else(|| {
-                            anyhow!(
-                                "invalid placeholder index: gave {index} when \
-                                 only {} placeholders are available",
-                                replacements.len(),
-                            )
-                        })?;
+                    let replacement = match replacements.get(index) {
+                        // TODO: is .display() the right method to use here? If
+                        //       so, why does .get() exist?
+                        Ok(t) => t.display().to_string(),
+                        Err(FuzipMissing::NoMatch) => String::new(),
+                        Err(FuzipMissing::OutOfBounds) => bail!(
+                            "invalid placeholder index: gave {index} when \
+                             only {} placeholders are available",
+                            replacements.width(),
+                        ),
+                    };
                     debug!("placeholder {part} => {replacement}");
-                    Ok(replacement.to_string())
+                    Ok(replacement)
                 },
                 None => Ok(part.to_string()),
             }

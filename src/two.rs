@@ -1,16 +1,16 @@
-use std::{ffi::OsStr, iter::FusedIterator, mem};
+use std::{iter::FusedIterator, mem};
 
 use log::debug;
 use pathfinding::{kuhn_munkres::kuhn_munkres_min, matrix::Matrix};
 
-use crate::Fuzip;
+use crate::{Fuzip, Fuzippable};
 
 pub fn fuzzy_zip_two<'a, T>(
     lefts: &'a [T],
     rights: &'a [T],
 ) -> impl Iterator<Item = Fuzip<&'a T>>
 where
-    T: AsRef<OsStr>,
+    T: Fuzippable,
 {
     debug_assert!(!lefts.is_empty(), "lefts empty");
     debug_assert!(!rights.is_empty(), "rights empty");
@@ -34,8 +34,8 @@ where
             rights.len(),
             |(left_index, right_index)| {
                 let weight = strsim::generic_damerau_levenshtein(
-                    lefts[left_index].as_ref().as_encoded_bytes(),
-                    rights[right_index].as_ref().as_encoded_bytes(),
+                    lefts[left_index].key(),
+                    rights[right_index].key(),
                 );
                 i64::try_from(weight).expect("weight unable to fit in i64")
             },

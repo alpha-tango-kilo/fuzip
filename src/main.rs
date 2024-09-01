@@ -1,5 +1,5 @@
 use std::{
-    error::Error, ffi::OsString, fmt, fmt::Write, fs, io,
+    error::Error, ffi::OsString, fmt, fmt::Write, fs, hash::Hash, io,
     os::windows::fs::FileTypeExt, path::PathBuf,
 };
 
@@ -47,16 +47,11 @@ fn main() -> anyhow::Result<()> {
     };
 
     let exec = args.exec();
-    // TODO: when zipping paths, use file stems for matching
     fuzzy_zip_two(lefts, rights).try_for_each(
         |fuzip| -> anyhow::Result<()> {
-            // TODO: properly use Fuzip
             match &exec {
                 Some(exec) => {
-                    let mut command = exec.to_command(&[
-                        fuzip.get(0).unwrap().display(),
-                        fuzip.get(1).unwrap().display(),
-                    ])?;
+                    let mut command = exec.to_command(&fuzip)?;
                     if args.verbose || args.dry_run {
                         info!("Running {command:?}");
                     }
@@ -68,7 +63,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 },
                 None => {
-                    println!("{:?} {:?}", fuzip.get(0), fuzip.get(1),);
+                    println!("{fuzip}");
                 },
             }
             Ok(())
@@ -77,7 +72,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<PathBuf>>> {
+fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<FuzipPath>>> {
     inputs
         .iter()
         .map(|dir_path| -> anyhow::Result<_> {
@@ -87,7 +82,7 @@ fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<PathBuf>>> {
                     let dir_entry = dir_entry_res?;
                     let file_type = dir_entry.file_type()?;
                     if file_type.is_file() || file_type.is_symlink_file() {
-                        values.push(dir_entry.path());
+                        values.push(dir_entry.path().into());
                     }
                     Ok(())
                 },
@@ -95,6 +90,80 @@ fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<PathBuf>>> {
             Ok(values)
         })
         .collect()
+}
+
+pub trait Fuzippable {
+    type Inner;
+
+    /// Access the inner type
+    fn get(&self) -> &Self::Inner;
+
+    // Trait bounds from strsim algorithm
+    /// The value to be used for fuzzy matching comparison
+    fn key(&self) -> &[impl Eq + Hash + Clone];
+    // TODO: can I provide these default implementations if the type bounds are
+    //       met?
+    // where
+    //     <Self as Fuzippable>::Inner: Eq + Hash + Clone,
+    // {
+    //     self.get()
+    // }
+
+    /// How to print the item
+    fn display(&self) -> impl fmt::Display;
+    // where
+    //     <Self as Fuzippable>::Inner: fmt::Display,
+    // {
+    //     self.get()
+    // }
+}
+
+// FIXME: I don't like that I need this impl, can I do away with it somehow?
+impl<T> Fuzippable for &T
+where
+    T: Fuzippable,
+{
+    type Inner = T::Inner;
+
+    fn get(&self) -> &Self::Inner {
+        (*self).get()
+    }
+
+    fn key(&self) -> &[impl Eq + Hash + Clone] {
+        (*self).key()
+    }
+
+    fn display(&self) -> impl fmt::Display {
+        (*self).display()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FuzipPath(PathBuf);
+
+impl Fuzippable for FuzipPath {
+    type Inner = PathBuf;
+
+    fn get(&self) -> &Self::Inner {
+        &self.0
+    }
+
+    fn key(&self) -> &[impl Eq + Hash + Clone] {
+        self.0
+            .file_stem()
+            .expect("FuzipPath with no stem")
+            .as_encoded_bytes()
+    }
+
+    fn display(&self) -> impl fmt::Display {
+        self.0.display()
+    }
+}
+
+impl From<PathBuf> for FuzipPath {
+    fn from(path: PathBuf) -> Self {
+        FuzipPath(path)
+    }
 }
 
 #[derive(Debug)]
@@ -120,12 +189,12 @@ impl<T> Fuzip<T> {
 
 impl<T> fmt::Display for Fuzip<T>
 where
-    T: fmt::Display,
+    T: Fuzippable,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut buf = String::new();
         for t in self.0.iter().filter_map(Option::as_ref) {
-            let _ = write!(&mut buf, "{t} ");
+            let _ = write!(&mut buf, "{} ", t.display());
         }
         buf.pop();
         f.write_str(&buf)

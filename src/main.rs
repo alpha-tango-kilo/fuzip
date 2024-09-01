@@ -150,8 +150,8 @@ impl Fuzippable for FuzipPath {
 
     fn key(&self) -> &[impl Eq + Hash + Clone] {
         self.0
-            .file_stem()
-            .expect("FuzipPath with no stem")
+            .file_name()
+            .expect("FuzipPath with no file name")
             .as_encoded_bytes()
     }
 

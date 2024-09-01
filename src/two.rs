@@ -45,10 +45,6 @@ where
     let (_, assignments) =
         crate::time!("solve with Kuhn-Munkres", kuhn_munkres_min(&matrix));
 
-    if swapped {
-        // Swap back!
-        mem::swap(&mut lefts, &mut rights);
-    }
     Fuzip2Iterator::new(lefts, rights, assignments, swapped)
 }
 

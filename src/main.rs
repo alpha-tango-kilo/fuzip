@@ -166,6 +166,22 @@ impl From<PathBuf> for FuzipPath {
     }
 }
 
+impl<'a> Fuzippable for &'a str {
+    type Inner = &'a str;
+
+    fn get(&self) -> &Self::Inner {
+        self
+    }
+
+    fn key(&self) -> &[impl Eq + Hash + Clone] {
+        self.as_bytes()
+    }
+
+    fn display(&self) -> impl fmt::Display {
+        self
+    }
+}
+
 #[derive(Debug)]
 pub struct Fuzip<T>(Vec<Option<T>>);
 

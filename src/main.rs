@@ -1,6 +1,6 @@
 use std::{
     error::Error, ffi::OsString, fmt, fmt::Write, fs, fs::DirEntry, hash::Hash,
-    io, os::windows::fs::FileTypeExt, path::PathBuf,
+    io, path::PathBuf,
 };
 
 use anyhow::bail;
@@ -97,9 +97,7 @@ fn prep_paths(
                 |dir_entry_res| -> io::Result<_> {
                     let dir_entry = dir_entry_res?;
                     let file_type = dir_entry.file_type()?;
-                    if (file_type.is_file() || file_type.is_symlink_file())
-                        && matches_filter(&dir_entry)
-                    {
+                    if file_type.is_file() && matches_filter(&dir_entry) {
                         values.push(dir_entry.path().into());
                     }
                     Ok(())

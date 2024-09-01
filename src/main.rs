@@ -1,26 +1,34 @@
 use std::{
-    ffi::{OsStr, OsString},
-    fs, io, mem,
-    os::windows::fs::FileTypeExt,
-    path::PathBuf,
+    error::Error, ffi::OsString, fmt, fmt::Write, fs, io,
+    os::windows::fs::FileTypeExt, path::PathBuf,
 };
 
 use anyhow::bail;
 use clap::Parser;
 use env_logger::Env;
-use log::{debug, error, info, LevelFilter};
-use pathfinding::{kuhn_munkres::kuhn_munkres_min, matrix::Matrix};
+use log::{error, info, LevelFilter};
 
-use crate::cli::FuzipArgs;
+use crate::{cli::FuzipArgs, two::fuzzy_zip_two};
 
 mod cli;
+mod two;
 
+#[macro_export]
 macro_rules! time {
     ($task:literal, $e:expr) => {{
         let now = std::time::Instant::now();
         let expr = $e;
         log::trace!("{} took {:?}", $task, now.elapsed());
         expr
+    }};
+}
+
+#[macro_export]
+macro_rules! fuzip {
+    ($($e:expr $(,)?)+) => {{
+        $crate::Fuzip(vec![
+            $(Option::from($e),)+
+        ])
     }};
 }
 
@@ -39,12 +47,16 @@ fn main() -> anyhow::Result<()> {
     };
 
     let exec = args.exec();
+    // TODO: when zipping paths, use file stems for matching
     fuzzy_zip_two(lefts, rights).try_for_each(
-        |(left, right)| -> anyhow::Result<()> {
+        |fuzip| -> anyhow::Result<()> {
+            // TODO: properly use Fuzip
             match &exec {
                 Some(exec) => {
-                    let mut command =
-                        exec.to_command(&[left.display(), right.display()])?;
+                    let mut command = exec.to_command(&[
+                        fuzip.get(0).unwrap().display(),
+                        fuzip.get(1).unwrap().display(),
+                    ])?;
                     if args.verbose || args.dry_run {
                         info!("Running {command:?}");
                     }
@@ -56,7 +68,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 },
                 None => {
-                    println!("{} {}", left.display(), right.display());
+                    println!("{:?} {:?}", fuzip.get(0), fuzip.get(1),);
                 },
             }
             Ok(())
@@ -85,67 +97,54 @@ fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<PathBuf>>> {
         .collect()
 }
 
-fn fuzzy_zip_two<'a, T>(
-    lefts: &'a [T],
-    rights: &'a [T],
-) -> impl Iterator<Item = (&'a T, &'a T)>
-where
-    T: AsRef<OsStr>,
-{
-    debug_assert!(!lefts.is_empty(), "lefts empty");
-    debug_assert!(!rights.is_empty(), "rights empty");
+#[derive(Debug)]
+pub struct Fuzip<T>(Vec<Option<T>>);
 
-    // Re-assign these so they can be swapped if needed, Matrix needs rows >=
-    // columns
-    let mut lefts = lefts;
-    let mut rights = rights;
-    let swapped = if lefts.len() <= rights.len() {
-        false
-    } else {
-        debug!("swapping lefts & rights");
-        mem::swap(&mut lefts, &mut rights);
-        true
-    };
+impl<T> Fuzip<T> {
+    pub fn get(&self, index: usize) -> Result<&T, FuzipMissing> {
+        match self.0.get(index) {
+            Some(Some(t)) => Ok(t),
+            Some(None) => Err(FuzipMissing::NoMatch),
+            None => Err(FuzipMissing::OutOfBounds),
+        }
+    }
 
-    let matrix = time!(
-        "build matrix",
-        Matrix::from_fn(
-            lefts.len(),
-            rights.len(),
-            |(left_index, right_index)| {
-                let weight = strsim::generic_damerau_levenshtein(
-                    lefts[left_index].as_ref().as_encoded_bytes(),
-                    rights[right_index].as_ref().as_encoded_bytes(),
-                );
-                i64::try_from(weight).expect("weight unable to fit in i64")
-            },
-        )
-    );
+    pub fn width(&self) -> usize {
+        self.0.len()
+    }
 
-    // TODO: return Nones for things that couldn't be matched to, abstraction
-    //       type?
-    let (_, assignments) =
-        time!("solve with Kuhn-Munkres", kuhn_munkres_min(&matrix));
-    assignments
-        .into_iter()
-        .enumerate()
-        .map(move |(row, column)| {
-            if !swapped {
-                (&lefts[row], &rights[column])
-            } else {
-                (&rights[column], &lefts[row])
-            }
-        })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_zip_two() {
-        let answer = fuzzy_zip_two(&["aa", "bb", "cc"], &["ab", "bb"])
-            .collect::<Vec<_>>();
-        dbg!(answer);
+    pub fn complete(&self) -> bool {
+        self.0.iter().all(Option::is_some)
     }
 }
+
+impl<T> fmt::Display for Fuzip<T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut buf = String::new();
+        for t in self.0.iter().filter_map(Option::as_ref) {
+            let _ = write!(&mut buf, "{t} ");
+        }
+        buf.pop();
+        f.write_str(&buf)
+    }
+}
+
+#[derive(Debug)]
+pub enum FuzipMissing {
+    NoMatch,
+    OutOfBounds,
+}
+
+impl fmt::Display for FuzipMissing {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            FuzipMissing::NoMatch => f.write_str("no matching value"),
+            FuzipMissing::OutOfBounds => f.write_str("index out of bounds"),
+        }
+    }
+}
+
+impl Error for FuzipMissing {}

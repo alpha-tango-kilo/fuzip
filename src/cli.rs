@@ -21,17 +21,20 @@ pub struct FuzipArgs {
     #[arg(value_name = "input", num_args = 2..)]
     pub inputs: Vec<OsString>,
     /// Print commands before executing them
-    #[arg(short = 'v', long = "verbose")]
+    #[arg(short, long)]
     pub verbose: bool,
     /// The command template to execute
     ///
     /// Use 1-based indices surrounded by curly brackets to substite, e.g.
     /// "echo {1} {2}"
-    #[arg(short = 'x', long = "exec", value_parser = NonEmptyStringValueParser::new())]
+    #[arg(short = 'x', long, value_parser = NonEmptyStringValueParser::new())]
     exec: Option<String>,
     /// Don't run command, just show what would be run
-    #[arg(short = 'n', long = "dry-run", requires = "exec")]
+    #[arg(short = 'n', long, requires = "exec")]
     pub dry_run: bool,
+    /// Only show complete zips, no partial ones
+    #[arg(long)]
+    pub full_only: bool,
 }
 
 impl FuzipArgs {

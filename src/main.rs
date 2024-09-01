@@ -47,8 +47,9 @@ fn main() -> anyhow::Result<()> {
     };
 
     let exec = args.exec();
-    fuzzy_zip_two(lefts, rights).try_for_each(
-        |fuzip| -> anyhow::Result<()> {
+    fuzzy_zip_two(lefts, rights)
+        .filter(|fuzip| !args.full_only || fuzip.complete())
+        .try_for_each(|fuzip| -> anyhow::Result<()> {
             match &exec {
                 Some(exec) => {
                     let mut command = exec.to_command(&fuzip)?;
@@ -67,8 +68,7 @@ fn main() -> anyhow::Result<()> {
                 },
             }
             Ok(())
-        },
-    )?;
+        })?;
     Ok(())
 }
 

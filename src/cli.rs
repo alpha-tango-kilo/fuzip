@@ -6,7 +6,7 @@ use std::{
     sync::LazyLock,
 };
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use clap::{builder::NonEmptyStringValueParser, Parser};
 use log::debug;
 use regex_lite::Regex;
@@ -68,11 +68,12 @@ impl ExecBlueprint {
                         .as_str()
                         .parse::<usize>()
                         .expect("placeholder index exceeded usize::MAX")
-                        .checked_add(1)
-                        .expect("placeholder index exceeded usize::MAX");
-                    if index == 0 {
-                        bail!("placeholder indices are 1-based, not 0-based");
-                    }
+                        .checked_sub(1)
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "placeholder indices are 1-based, not 0-based",
+                            )
+                        })?;
                     let replacement = match replacements.get(index) {
                         // TODO: is .display() the right method to use here? If
                         //       so, why does .get() exist?

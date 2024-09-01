@@ -1,12 +1,13 @@
 use std::{
-    error::Error, ffi::OsString, fmt, fmt::Write, fs, hash::Hash, io,
-    os::windows::fs::FileTypeExt, path::PathBuf,
+    error::Error, ffi::OsString, fmt, fmt::Write, fs, fs::DirEntry, hash::Hash,
+    io, os::windows::fs::FileTypeExt, path::PathBuf,
 };
 
 use anyhow::bail;
 use clap::Parser;
 use env_logger::Env;
-use log::{error, info, LevelFilter};
+use log::{debug, error, info, LevelFilter};
+use regex_lite::Regex;
 
 use crate::{cli::FuzipArgs, two::fuzzy_zip_two};
 
@@ -41,7 +42,8 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let args = FuzipArgs::parse();
-    let inputs = time!("prep_paths", prep_paths(&args.inputs))?;
+    let inputs = time!("prep_paths", prep_paths(&args.inputs, &args.filter))?;
+    debug!("inputs: {inputs:#?}");
     let [lefts, rights] = inputs.as_slice() else {
         bail!("currently only 2 inputs are supported");
     };
@@ -72,7 +74,21 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<FuzipPath>>> {
+fn prep_paths(
+    inputs: &[OsString],
+    filter: &Option<Regex>,
+) -> anyhow::Result<Vec<Vec<FuzipPath>>> {
+    let matches_filter = |dir_entry: &DirEntry| {
+        filter.as_ref().map_or(true, |regex| {
+            let file_name = dir_entry.file_name();
+            let file_name = file_name.to_string_lossy();
+            let is_match = regex.is_match(file_name.as_ref());
+            if is_match {
+                debug!("{file_name} matches user regex");
+            }
+            is_match
+        })
+    };
     inputs
         .iter()
         .map(|dir_path| -> anyhow::Result<_> {
@@ -81,7 +97,9 @@ fn prep_paths(inputs: &[OsString]) -> anyhow::Result<Vec<Vec<FuzipPath>>> {
                 |dir_entry_res| -> io::Result<_> {
                     let dir_entry = dir_entry_res?;
                     let file_type = dir_entry.file_type()?;
-                    if file_type.is_file() || file_type.is_symlink_file() {
+                    if (file_type.is_file() || file_type.is_symlink_file())
+                        && matches_filter(&dir_entry)
+                    {
                         values.push(dir_entry.path().into());
                     }
                     Ok(())

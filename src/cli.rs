@@ -35,6 +35,10 @@ pub struct FuzipArgs {
     /// Only show complete zips, no partial ones
     #[arg(long)]
     pub full_only: bool,
+    /// Ignore any values (from any input) that don't match this regular
+    /// expression
+    #[arg(long)]
+    pub filter: Option<Regex>,
 }
 
 impl FuzipArgs {
@@ -57,7 +61,7 @@ impl ExecBlueprint {
         static PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
             // Captures the number within a {1} placeholder. Requires
             // full-string match
-            Regex::new(r"^\{(?P<index>\d+)\}$").unwrap()
+            Regex::new(r"^\{(?P<index>\d+)}$").unwrap()
         });
         let swap_placeholder = |part: &str| -> anyhow::Result<String> {
             match PLACEHOLDER_REGEX.captures(part) {
